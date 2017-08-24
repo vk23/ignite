@@ -50,7 +50,7 @@ public class AlphaRunner {
     public static void main(String[] args) throws Exception {
         try (Ignite node = Ignition.start(new IgniteConfiguration().setLocalHost("127.0.0.1"))) {
             // Start caches
-            IgniteCache<String, Contractor> cacheContractor = node.getOrCreateCache(cacheContractorConfiguration());
+            IgniteCache<Long, Contractor> cacheContractor = node.getOrCreateCache(cacheContractorConfiguration());
             IgniteCache<OrderPojo.Key, OrderPojo> cacheOrder = node.getOrCreateCache(cacheOrderConfiguration());;
 
             // Generate traders.
@@ -74,7 +74,7 @@ public class AlphaRunner {
                 orders.add(generateOrder(traders, contractors));
 
             // Inject data.
-            try (IgniteDataStreamer<String, Contractor> streamer = node.dataStreamer(CACHE_CONTRACTOR)) {
+            try (IgniteDataStreamer<Long, Contractor> streamer = node.dataStreamer(CACHE_CONTRACTOR)) {
                 for (Contractor contractor : contractors)
                     streamer.addData(contractor.idLe, contractor);
 
@@ -137,22 +137,11 @@ public class AlphaRunner {
     }
 
     public static Contractor generateContractor(int ctr) {
-        ctr += 100;
-
         ThreadLocalRandom rand = ThreadLocalRandom.current();
-
-        StringBuilder idLeBuilder = new StringBuilder();
-
-        idLeBuilder.append(ctr);
-
-        for (int i = 0; i < 6; i++)
-            idLeBuilder.append((char)rand.nextInt(52, 72));
-
-        idLeBuilder.substring(0, 8);
 
         Contractor res = new Contractor();
 
-        res.idLe = idLeBuilder.toString();
+        res.idLe = ctr;
         res.resident = rand.nextBoolean();
 
         return res;
@@ -180,10 +169,10 @@ public class AlphaRunner {
         res.trader = traders.get(rand.nextInt(traders.size()));
 
         res.currency1 = rand.nextBoolean() ? "RUR" : "USD";
-        res.cur1Amount = new BigDecimal(rand.nextInt(100_000));
+        res.cur1Amount =rand.nextInt(100_000);
 
         res.currency2 = res.currency1.equals("RUR") ? "USD" : "RUR";
-        res.cur2Amount = new BigDecimal(rand.nextInt(100_000));;
+        res.cur2Amount = rand.nextInt(100_000);;
 
         return res;
     }
@@ -191,8 +180,8 @@ public class AlphaRunner {
     /**
      * @return Contractor cache configuration.
      */
-    private static CacheConfiguration<String, Contractor> cacheContractorConfiguration() {
-        CacheConfiguration<String, Contractor> ccfg = new CacheConfiguration<>(CACHE_CONTRACTOR);
+    private static CacheConfiguration<Long, Contractor> cacheContractorConfiguration() {
+        CacheConfiguration<Long, Contractor> ccfg = new CacheConfiguration<>(CACHE_CONTRACTOR);
 
         ccfg.setBackups(1);
         ccfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
@@ -204,7 +193,7 @@ public class AlphaRunner {
         ccfg.setRebalanceMode(CacheRebalanceMode.NONE);
 //        ccfg.setQueryParallelism(Runtime.getRuntime().availableProcessors() + 4);
 
-        QueryEntity entity = new QueryEntity(String.class, Contractor.class);
+        QueryEntity entity = new QueryEntity(Long.class, Contractor.class);
         entity.setIndexes(null);
 
         entity.setIndexes(Collections.singletonList(index("ID_LE", 20)));

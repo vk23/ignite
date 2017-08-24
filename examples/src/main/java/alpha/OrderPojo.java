@@ -26,10 +26,10 @@ public class OrderPojo {
     public int dealType;
 
     @QuerySqlField(name = "BUYER_LEGAL_ENTITY", index = true)
-    public String buyerLegalEntity;
+    public long buyerLegalEntity;
 
     @QuerySqlField(name = "SELLER_LEGAL_ENTITY", index = true)
-    public String sellerLegalEntity;
+    public long sellerLegalEntity;
 
     @QuerySqlField(name = "TRADER")
     @AffinityKeyMapped
@@ -39,11 +39,11 @@ public class OrderPojo {
     public String currency1;
 
     @QuerySqlField(name = "CUR1_AMOUNT")
-    public BigDecimal cur1Amount;
+    public long cur1Amount;
 
     @QuerySqlField(name = "CURRENCY2", index = true)
     public String currency2;
 
     @QuerySqlField(name = "CUR2_AMOUNT")
-    public BigDecimal cur2Amount;
+    public long cur2Amount;
 }
