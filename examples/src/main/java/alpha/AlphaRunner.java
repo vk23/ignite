@@ -14,6 +14,9 @@ import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -44,7 +47,7 @@ public class AlphaRunner {
     /**
      * Entry point.
      */
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         try (Ignite node = Ignition.start(new IgniteConfiguration().setLocalHost("127.0.0.1"))) {
             // Start caches
             IgniteCache<String, Contractor> cacheContractor = node.getOrCreateCache(cacheContractorConfiguration());
@@ -89,15 +92,30 @@ public class AlphaRunner {
 
             System.out.println(">>> Loaded orders.");
 
+            // Explain.
+            String sql = loadSql("sql_01.txt");
+
+            String explain = (String)cacheOrder.query(new SqlFieldsQuery("EXPLAIN " + sql)).getAll().get(0).get(0);
+
+            System.out.println();
+            System.out.println(">>> EXPLAIN:");
+            System.out.println(explain);
+            System.out.println();
+
             // Query.
             long startTs = System.currentTimeMillis();
 
-            for (List<?> row : cacheOrder.query(new SqlFieldsQuery(AlphaSql.QRY))) {
-                System.out.println(row);
+            int cnt = 0;
+
+            for (List<?> row : cacheOrder.query(new SqlFieldsQuery(sql)).getAll()) {
+                //System.out.println(row);
+
+                cnt++;
             }
 
             long durTs = System.currentTimeMillis() - startTs;
 
+            System.out.println(">>> Count: " + cnt);
             System.out.println(">>> Duration: " + durTs);
         }
     }
@@ -253,5 +271,30 @@ public class AlphaRunner {
         idx.setInlineSize(inlineSize);
 
         return idx;
+    }
+
+    /**
+     * Load SQL from a file.
+     *
+     * @param file File.
+     * @return SQL.
+     * @throws Exception If failed.
+     */
+    private static String loadSql(String file) throws Exception {
+        StringBuilder res = new StringBuilder();
+
+        String path = "C:\\Personal\\code\\incubator-ignite\\examples\\src\\main\\java\\alpha\\" + file;
+
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(path)))) {
+            String next = br.readLine();
+
+            while (next != null) {
+                res.append(next).append("\n");
+
+                next = br.readLine();
+            }
+        }
+
+        return res.toString();
     }
 }
