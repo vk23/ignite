@@ -95,12 +95,12 @@ public class AlphaRunner {
             // Explain.
             String sql = loadSql("sql_01.txt");
 
-//            String explain = (String)cacheOrder.query(new SqlFieldsQuery("EXPLAIN " + sql)).getAll().get(0).get(0);
-//
-//            System.out.println();
-//            System.out.println(">>> EXPLAIN:");
-//            System.out.println(explain);
-//            System.out.println();
+            String explain = (String)cacheOrder.query(new SqlFieldsQuery("EXPLAIN " + sql)).getAll().get(0).get(0);
+
+            System.out.println();
+            System.out.println(">>> EXPLAIN:");
+            System.out.println(explain);
+            System.out.println();
 
             // Query.
             for (int i = 0; i < 10_000; i++){
