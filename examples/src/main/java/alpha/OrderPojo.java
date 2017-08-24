@@ -23,7 +23,7 @@ public class OrderPojo {
     public boolean farLeg;
 
     @QuerySqlField(name = "DEAL_TYPE")
-    public String dealType;
+    public int dealType;
 
     @QuerySqlField(name = "BUYER_LEGAL_ENTITY", index = true)
     public String buyerLegalEntity;

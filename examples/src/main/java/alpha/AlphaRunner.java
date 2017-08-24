@@ -95,28 +95,31 @@ public class AlphaRunner {
             // Explain.
             String sql = loadSql("sql_01.txt");
 
-            String explain = (String)cacheOrder.query(new SqlFieldsQuery("EXPLAIN " + sql)).getAll().get(0).get(0);
-
-            System.out.println();
-            System.out.println(">>> EXPLAIN:");
-            System.out.println(explain);
-            System.out.println();
+//            String explain = (String)cacheOrder.query(new SqlFieldsQuery("EXPLAIN " + sql)).getAll().get(0).get(0);
+//
+//            System.out.println();
+//            System.out.println(">>> EXPLAIN:");
+//            System.out.println(explain);
+//            System.out.println();
 
             // Query.
-            long startTs = System.currentTimeMillis();
+            for (int i = 0; i < 10_000; i++){
+                long startTs = System.currentTimeMillis();
 
-            int cnt = 0;
+                int cnt = 0;
 
-            for (List<?> row : cacheOrder.query(new SqlFieldsQuery(sql)).getAll()) {
-                //System.out.println(row);
+                for (List<?> row : cacheOrder.query(new SqlFieldsQuery(sql)).getAll()) {
+                    //System.out.println(row);
 
-                cnt++;
+                    cnt++;
+                }
+
+                long durTs = System.currentTimeMillis() - startTs;
+
+                System.out.println(">>> Count: " + cnt);
+                System.out.println(">>> Duration: " + durTs);
+                System.out.println();
             }
-
-            long durTs = System.currentTimeMillis() - startTs;
-
-            System.out.println(">>> Count: " + cnt);
-            System.out.println(">>> Duration: " + durTs);
         }
     }
 
@@ -163,7 +166,7 @@ public class AlphaRunner {
         res.objUID = UUID.randomUUID().toString();
         res.farLeg = rand.nextBoolean();
 
-        res.dealType = rand.nextBoolean() ? "Buy" : "Sell";
+        res.dealType = rand.nextBoolean() ? 1 : 2;
 
         int buyerIdx = rand.nextInt(contractors.size());
         int sellerIdx = rand.nextInt(contractors.size() - 1);
@@ -224,7 +227,7 @@ public class AlphaRunner {
         ccfg.setReadFromBackup(true);
         ccfg.setStatisticsEnabled(false);
         ccfg.setWriteSynchronizationMode(CacheWriteSynchronizationMode.FULL_SYNC);
-        ccfg.setQueryParallelism(3);
+        ccfg.setQueryParallelism(4);
         ccfg.setRebalanceMode(CacheRebalanceMode.NONE);
 
         ccfg.setIndexedTypes(OrderPojo.Key.class, OrderPojo.class);
