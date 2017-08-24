@@ -93,7 +93,7 @@ public class AlphaRunner {
             System.out.println(">>> Loaded orders.");
 
             // Explain.
-            String sql = loadSql("sql_01.txt");
+            String sql = loadSql("sql_02.txt");
 
             String explain = (String)cacheOrder.query(new SqlFieldsQuery("EXPLAIN " + sql)).getAll().get(0).get(0);
 
