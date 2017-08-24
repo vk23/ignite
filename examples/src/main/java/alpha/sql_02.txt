@@ -8,7 +8,8 @@ SELECT
 
     DEAL_TYPE,
     FAR_LEG,
-    SUM(ABS(CUR1_AMOUNT))
+    SUM(ABS(CUR1_AMOUNT)),
+    SUM(ABS(CUR2_AMOUNT))
 
 FROM OrderPojo
     LEFT JOIN CONTRACTORS.Contractor as contractors ON OrderPojo.BUYER_LEGAL_ENTITY = contractors.ID_LE
