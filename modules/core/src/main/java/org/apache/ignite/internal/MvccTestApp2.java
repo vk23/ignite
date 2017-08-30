@@ -23,7 +23,6 @@ import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -35,6 +34,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -54,15 +54,15 @@ import org.jsr166.ConcurrentHashMap8;
 /**
  *
  */
-public class MvccTestApp {
+public class MvccTestApp2 {
     /** */
-    private static final boolean DEBUG_LOG = false;
+    private static final boolean DEBUG_LOG = true;
 
     /** */
     private static final boolean SQL = false;
 
     public static void main1(String[] args) throws Exception {
-        final MvccTestApp.TestCluster cluster = new MvccTestApp.TestCluster(1);
+        final TestCluster cluster = new TestCluster(1);
 
         final int ACCOUNTS = 3;
 
@@ -111,7 +111,7 @@ public class MvccTestApp {
     }
 
     public static void main0(String[] args) throws Exception {
-        final MvccTestApp.TestCluster cluster = new MvccTestApp.TestCluster(1);
+        final TestCluster cluster = new TestCluster(1);
 
         final int ACCOUNTS = 3;
 
@@ -157,13 +157,13 @@ public class MvccTestApp {
     public static void main(String[] args) throws Exception {
         final AtomicBoolean err = new AtomicBoolean();
 
-        final int READ_THREADS = 4;
+        final int READ_THREADS = 1;
         final int UPDATE_THREADS = 4;
         final int ACCOUNTS = 50;
 
         final int START_VAL = 100000;
 
-        for (int iter = 0; iter < 100; iter++) {
+        for (int iter = 0; iter < 1000; iter++) {
             System.out.println("Iteration [readThreads=" + READ_THREADS +
                 ", updateThreads=" + UPDATE_THREADS + ", accounts=" + ACCOUNTS + ", iter=" + iter + ']');
 
@@ -240,6 +240,8 @@ public class MvccTestApp {
 
                                             TestDebugLog.printAllAndExit("No value for key: " + i);
                                         }
+
+                                        return;
                                     }
 
                                     sum += val;
@@ -438,7 +440,7 @@ public class MvccTestApp {
                 node.dataStore.unlockEntry(e.getKey());
             }
 
-            crd.txDone(txId);
+            crd.txDone(txId, cntr.cntr);
         }
 
         void txTransfer(Integer id1, Integer id2, boolean fromFirst) {
@@ -526,10 +528,10 @@ public class MvccTestApp {
                 }
             }
 
-            crd.txDone(txId);
+            crd.txDone(txId, cntr.cntr);
 
-            if (DEBUG_LOG)
-                TestDebugLog.msgs.add(new TestDebugLog.Msg2("tx done", txId, cntr.cntr));
+//            if (DEBUG_LOG)
+//                TestDebugLog.msgs.add(new TestDebugLog.Msg2("tx done", txId, cntr.cntr));
         }
 
         void txRemoveTransfer(Integer from, Integer to) {
@@ -595,7 +597,7 @@ public class MvccTestApp {
                 }
             }
 
-            crd.txDone(txId);
+            crd.txDone(txId, cntr.cntr);
 
             if (DEBUG_LOG)
                 TestDebugLog.msgs.add(new TestDebugLog.Msg2("tx done", txId, cntr.cntr));
@@ -709,39 +711,39 @@ public class MvccTestApp {
 
         /** */
         @GridToStringInclude
-        private final ConcurrentHashMap8<TxId, TxId> activeTxs = new ConcurrentHashMap8<>();
+        private final ConcurrentHashMap8<TxId, Long> activeTxs = new ConcurrentHashMap8<>();
 
         CoordinatorCounter nextTxCounter(TxId txId) {
-            activeTxs.put(txId, txId);
+            long cur = cntr.get();
+
+            activeTxs.put(txId, cur + 1);
 
             CoordinatorCounter newCtr = new CoordinatorCounter(cntr.incrementAndGet());
-
-            txId.cntr = newCtr.cntr;
 
             return newCtr;
         }
 
-        void txDone(TxId txId) {
-            TxId cntr = activeTxs.remove(txId);
+        void txDone(TxId txId, long cntr) {
+            Long rmvd = activeTxs.remove(txId);
 
-            assert cntr != null && cntr.cntr != -1L;
+            assert rmvd != null;
 
-            commitCntr.setIfGreater(cntr.cntr);
+            commitCntr.setIfGreater(cntr);
         }
 
         private Long minActive(Set<TxId> txs) {
             Long minActive = null;
 
-            for (Map.Entry<TxId, TxId> e : activeTxs.entrySet()) {
+            for (Map.Entry<TxId, Long> e : activeTxs.entrySet()) {
                 if (txs != null)
                     txs.add(e.getKey());
 
-                TxId val = e.getValue();
+//                TxId val = e.getValue();
+//
+//                while (val.cntr == -1)
+//                    Thread.yield();
 
-                while (val.cntr == -1)
-                    Thread.yield();
-
-                long cntr = val.cntr;
+                long cntr = e.getValue();
 
                 if (minActive == null)
                     minActive = cntr;
@@ -783,7 +785,7 @@ public class MvccTestApp {
             Long minActive = minActive(txs);
 
             if (minActive != null && minActive < useCntr)
-                useCntr = minActive;
+                useCntr = minActive - 1;
 
             MvccQueryVersion qryVer = new MvccQueryVersion(new CoordinatorCounter(useCntr), txs);
 
@@ -945,8 +947,6 @@ public class MvccTestApp {
      *
      */
     static class TxId {
-        long cntr = -1;
-
         /** */
         @GridToStringInclude
         final long id;
@@ -1183,7 +1183,7 @@ public class MvccTestApp {
                 Object old = res.put(e.getKey().key, e.getValue().val);
 
                 if (DEBUG_LOG) {
-                    TestDebugLog.msgs.add(new TestDebugLog.Msg4("sql get mvcc val", e.getKey().key, val.val, val.ver, val.newVer));
+                    //TestDebugLog.msgs.add(new TestDebugLog.Msg4("sql get mvcc val", e.getKey().key, val.val, val.ver, val.newVer));
                 }
 
                 if (old != null) {
@@ -1203,7 +1203,7 @@ public class MvccTestApp {
         private boolean versionVisible(MvccUpdateVersion ver, MvccQueryVersion qryVer) {
             int cmp = ver.cntr.compareTo(qryVer.cntr);
 
-            return cmp <= 0 && !qryVer.activeTxs.contains(ver.txId);
+            return cmp <= 0;// && !qryVer.activeTxs.contains(ver.txId);
         }
 
         Object get(Object key, MvccQueryVersion ver) {
@@ -1230,6 +1230,16 @@ public class MvccTestApp {
 
             if (val != null) {
                 int cmp = val.ver.cntr.compareTo(ver.cntr);
+
+                if (DEBUG_LOG) {
+                    if (cmp > 0) {
+                        synchronized (TestDebugLog.msgs) {
+                            TestDebugLog.msgs.add(new TestDebugLog.Message("Committed [ver=" + val.ver + ", qryVer=" + ver.cntr + ']'));
+
+                            TestDebugLog.printAllAndExit("Committed [ver=" + val.ver + ", qryVer=" + ver + ']');
+                        }
+                    }
+                }
 
                 assert cmp <= 0 : "Committed [ver=" + val.ver + ", qryVer=" + ver.cntr + ']';
 
@@ -1314,307 +1324,252 @@ public class MvccTestApp {
     static void log(String msg) {
         System.out.println(Thread.currentThread() + ": " + msg);
     }
-}
 
-class TestDebugLog {
-    /** */
-    static final List<Object> msgs = Collections.synchronizedList(new ArrayList<>(100_000));
+    static class TestDebugLog {
+        /** */
+        //static final List<Object> msgs = Collections.synchronizedList(new ArrayList<>(1_000_000));
+        static final ConcurrentLinkedQueue<Object> msgs = new ConcurrentLinkedQueue<>();
 
-    /** */
-    private static final SimpleDateFormat DEBUG_DATE_FMT = new SimpleDateFormat("HH:mm:ss,SSS");
 
-    static class Message {
-        String thread = Thread.currentThread().getName();
 
-        String msg;
+        /** */
+        private static final SimpleDateFormat DEBUG_DATE_FMT = new SimpleDateFormat("HH:mm:ss,SSS");
 
-        long ts = U.currentTimeMillis();
+        static class Message {
+            String thread = Thread.currentThread().getName();
 
-        public Message(String msg) {
-            this.msg = msg;
+            String msg;
+
+            long ts = U.currentTimeMillis();
+
+            public Message(String msg) {
+                this.msg = msg;
+            }
+
+            public String toString() {
+                return "Msg [msg=" + msg + ", thread=" + thread + ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
+            }
         }
 
-        public String toString() {
-            return "Msg [msg=" + msg + ", thread=" + thread + ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
-        }
-    }
+        static class Msg2 extends Message{
+            Object v1;
+            Object v2;
 
-    static class Msg2 extends Message{
-        Object v1;
-        Object v2;
-
-        public Msg2(String msg, Object v1, Object v2) {
-            super(msg);
-            this.v1 = v1;
-            this.v2 = v2;
-        }
-        public String toString() {
-            return "Msg [msg=" + msg +
-                ", v1=" + v1 +
-                ", v2=" + v2 +
-                ", msg=" + msg +
-                ", thread=" + thread +
-                ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
-        }
-    }
-
-    static class Msg3 extends Message{
-        Object v1;
-        Object v2;
-        Object v3;
-
-        public Msg3(String msg, Object v1, Object v2, Object v3) {
-            super(msg);
-            this.v1 = v1;
-            this.v2 = v2;
-            this.v3 = v3;
-        }
-        public String toString() {
-            return "Msg [msg=" + msg +
-                ", v1=" + v1 +
-                ", v2=" + v2 +
-                ", v3=" + v3 +
-                ", thread=" + thread +
-                ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
-        }
-    }
-
-    static class Msg4 extends Message{
-        Object v1;
-        Object v2;
-        Object v3;
-        Object v4;
-
-        public Msg4(String msg, Object v1, Object v2, Object v3, Object v4) {
-            super(msg);
-            this.v1 = v1;
-            this.v2 = v2;
-            this.v3 = v3;
-            this.v4 = v4;
+            public Msg2(String msg, Object v1, Object v2) {
+                super(msg);
+                this.v1 = v1;
+                this.v2 = v2;
+            }
+            public String toString() {
+                return "Msg [msg=" + msg +
+                    ", v1=" + v1 +
+                    ", v2=" + v2 +
+                    ", msg=" + msg +
+                    ", thread=" + thread +
+                    ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
+            }
         }
 
-        public String toString() {
-            return "Msg [msg=" + msg +
-                ", v1=" + v1 +
-                ", v2=" + v2 +
-                ", v3=" + v3 +
-                ", v4=" + v4 +
-                ", thread=" + thread +
-                ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
-        }
-    }
+        static class Msg3 extends Message{
+            Object v1;
+            Object v2;
+            Object v3;
 
-    static class Msg6 extends Message{
-        Object v1;
-        Object v2;
-        Object v3;
-        Object v4;
-        Object v5;
-        Object v6;
-
-        public Msg6(String msg, Object v1, Object v2, Object v3, Object v4, Object v5, Object v6) {
-            super(msg);
-            this.v1 = v1;
-            this.v2 = v2;
-            this.v3 = v3;
-            this.v4 = v4;
-            this.v5 = v5;
-            this.v6 = v6;
+            public Msg3(String msg, Object v1, Object v2, Object v3) {
+                super(msg);
+                this.v1 = v1;
+                this.v2 = v2;
+                this.v3 = v3;
+            }
+            public String toString() {
+                return "Msg [msg=" + msg +
+                    ", v1=" + v1 +
+                    ", v2=" + v2 +
+                    ", v3=" + v3 +
+                    ", thread=" + thread +
+                    ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
+            }
         }
 
-        public String toString() {
-            return "Msg [msg=" + msg +
-                ", txId=" + v1 +
-                ", id1=" + v2 +
-                ", v1=" + v3 +
-                ", id2=" + v4 +
-                ", v2=" + v5 +
-                ", cntr=" + v6 +
-                ", thread=" + thread +
-                ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
-        }
-    }
-    static class Msg6_1 extends Message{
-        Object v1;
-        Object v2;
-        Object v3;
-        Object v4;
-        Object v5;
-        Object v6;
+        static class Msg4 extends Message{
+            Object v1;
+            Object v2;
+            Object v3;
+            Object v4;
 
-        public Msg6_1(String msg, Object v1, Object v2, Object v3, Object v4, Object v5, Object v6) {
-            super(msg);
-            this.v1 = v1;
-            this.v2 = v2;
-            this.v3 = v3;
-            this.v4 = v4;
-            this.v5 = v5;
-            this.v6 = v6;
+            public Msg4(String msg, Object v1, Object v2, Object v3, Object v4) {
+                super(msg);
+                this.v1 = v1;
+                this.v2 = v2;
+                this.v3 = v3;
+                this.v4 = v4;
+            }
+
+            public String toString() {
+                return "Msg [msg=" + msg +
+                    ", v1=" + v1 +
+                    ", v2=" + v2 +
+                    ", v3=" + v3 +
+                    ", v4=" + v4 +
+                    ", thread=" + thread +
+                    ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
+            }
         }
 
-        public String toString() {
-            return "Msg [msg=" + msg +
-                ", key=" + v1 +
-                ", val=" + v2 +
-                ", ver=" + v3 +
-                ", cleanupC=" + v4 +
-                ", thread=" + thread +
-                ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
+        static class Msg6 extends Message{
+            Object v1;
+            Object v2;
+            Object v3;
+            Object v4;
+            Object v5;
+            Object v6;
+
+            public Msg6(String msg, Object v1, Object v2, Object v3, Object v4, Object v5, Object v6) {
+                super(msg);
+                this.v1 = v1;
+                this.v2 = v2;
+                this.v3 = v3;
+                this.v4 = v4;
+                this.v5 = v5;
+                this.v6 = v6;
+            }
+
+            public String toString() {
+                return "Msg [msg=" + msg +
+                    ", txId=" + v1 +
+                    ", id1=" + v2 +
+                    ", v1=" + v3 +
+                    ", id2=" + v4 +
+                    ", v2=" + v5 +
+                    ", cntr=" + v6 +
+                    ", thread=" + thread +
+                    ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
+            }
         }
-    }
+        static class Msg6_1 extends Message{
+            Object v1;
+            Object v2;
+            Object v3;
+            Object v4;
+            Object v5;
+            Object v6;
 
-    static class EntryMessage extends Message {
-        Object key;
-        Object val;
+            public Msg6_1(String msg, Object v1, Object v2, Object v3, Object v4, Object v5, Object v6) {
+                super(msg);
+                this.v1 = v1;
+                this.v2 = v2;
+                this.v3 = v3;
+                this.v4 = v4;
+                this.v5 = v5;
+                this.v6 = v6;
+            }
 
-        public EntryMessage(Object key, Object val, String msg) {
-            super(msg);
-
-            this.key = key;
-            this.val = val;
+            public String toString() {
+                return "Msg [msg=" + msg +
+                    ", key=" + v1 +
+                    ", val=" + v2 +
+                    ", ver=" + v3 +
+                    ", cleanupC=" + v4 +
+                    ", thread=" + thread +
+                    ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
+            }
         }
 
-        public String toString() {
-            return "EntryMsg [key=" + key + ", val=" + val + ", msg=" + msg + ", thread=" + thread + ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
+        static class EntryMessage extends Message {
+            Object key;
+            Object val;
+
+            public EntryMessage(Object key, Object val, String msg) {
+                super(msg);
+
+                this.key = key;
+                this.val = val;
+            }
+
+            public String toString() {
+                return "EntryMsg [key=" + key + ", val=" + val + ", msg=" + msg + ", thread=" + thread + ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
+            }
         }
-    }
 
-    static class PartMessage extends Message {
-        int p;
-        Object val;
+        static class PartMessage extends Message {
+            int p;
+            Object val;
 
-        public PartMessage(int p, Object val, String msg) {
-            super(msg);
+            public PartMessage(int p, Object val, String msg) {
+                super(msg);
 
-            this.p = p;
-            this.val = val;
+                this.p = p;
+                this.val = val;
+            }
+
+            public String toString() {
+                return "PartMessage [p=" + p + ", val=" + val + ", msg=" + msg + ", thread=" + thread + ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
+            }
         }
 
-        public String toString() {
-            return "PartMessage [p=" + p + ", val=" + val + ", msg=" + msg + ", thread=" + thread + ", time=" + DEBUG_DATE_FMT.format(new Date(ts)) + ']';
+        static final boolean out = false;
+
+        public static void addMessage(String msg) {
+            msgs.add(new Message(msg));
+
+            if (out)
+                System.out.println(msg);
         }
-    }
 
-    static final boolean out = false;
+        public static void addEntryMessage(Object key, Object val, String msg) {
+            if (key instanceof KeyCacheObject)
+                key = ((KeyCacheObject)key).value(null, false);
 
-    public static void addMessage(String msg) {
-        msgs.add(new Message(msg));
+            EntryMessage msg0 = new EntryMessage(key, val, msg);
 
-        if (out)
+            msgs.add(msg0);
+
+            if (out) {
+                System.out.println(msg0.toString());
+
+                System.out.flush();
+            }
+        }
+
+        public static void addPartMessage(int p, Object val, String msg) {
+            PartMessage msg0 = new PartMessage(p, val, msg);
+
+            msgs.add(msg0);
+
+            if (out) {
+                System.out.println(msg0.toString());
+
+                System.out.flush();
+            }
+        }
+
+        static void printAllAndExit(String msg) {
             System.out.println(msg);
-    }
 
-    public static void addEntryMessage(Object key, Object val, String msg) {
-        if (key instanceof KeyCacheObject)
-            key = ((KeyCacheObject)key).value(null, false);
+            TestDebugLog.addMessage(msg);
 
-        EntryMessage msg0 = new EntryMessage(key, val, msg);
+            List<Object> msgs = TestDebugLog.printMessages(true, null);
 
-        msgs.add(msg0);
+            TestDebugLog.printMessages0(msgs, "test_debug_update.txt");
 
-        if (out) {
-            System.out.println(msg0.toString());
+            TestDebugLog.printMessagesForThread(msgs, Thread.currentThread().getName(), "test_debug_thread.txt");
 
-            System.out.flush();
-        }
-    }
-
-    public static void addPartMessage(int p, Object val, String msg) {
-        PartMessage msg0 = new PartMessage(p, val, msg);
-
-        msgs.add(msg0);
-
-        if (out) {
-            System.out.println(msg0.toString());
-
-            System.out.flush();
-        }
-    }
-
-    static void printAllAndExit(String msg) {
-        System.out.println(msg);
-
-        TestDebugLog.addMessage(msg);
-
-        List<Object> msgs = TestDebugLog.printMessages(true, null);
-
-        TestDebugLog.printMessages0(msgs, "test_debug_update.txt");
-
-        TestDebugLog.printMessagesForThread(msgs, Thread.currentThread().getName(), "test_debug_thread.txt");
-
-        System.exit(1);
-    }
-
-    public static void printMessagesForThread(List<Object> msgs0, String thread0, String file) {
-        try {
-            FileOutputStream out = new FileOutputStream(file);
-
-            PrintWriter w = new PrintWriter(out);
-
-            for (Object msg : msgs0) {
-                if (msg instanceof Message) {
-                    String thread = ((Message) msg).thread;
-
-                    if (thread.equals(thread0))
-                        w.println(msg.toString());
-                }
-            }
-
-            w.close();
-
-            out.close();
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void printMessages0(List<Object> msgs0, String file) {
-        try {
-            FileOutputStream out = new FileOutputStream(file);
-
-            PrintWriter w = new PrintWriter(out);
-
-            for (Object msg : msgs0) {
-                if (msg instanceof Message) {
-                    String msg0 = ((Message) msg).msg;
-
-                    if (msg0.equals("tx done") || msg0.equals("update") || msg0.equals("cleanup"))
-                        w.println(msg.toString());
-                }
-            }
-
-            w.close();
-
-            out.close();
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static List<Object> printMessages(boolean file, Integer part) {
-        List<Object> msgs0;
-
-        synchronized (msgs) {
-            msgs0 = new ArrayList<>(msgs);
-
-            msgs.clear();
+            System.exit(1);
         }
 
-        if (file) {
+        public static void printMessagesForThread(List<Object> msgs0, String thread0, String file) {
             try {
-                FileOutputStream out = new FileOutputStream("test_debug.log");
+                FileOutputStream out = new FileOutputStream(file);
 
                 PrintWriter w = new PrintWriter(out);
 
                 for (Object msg : msgs0) {
-                    if (part != null && msg instanceof PartMessage) {
-                        if (((PartMessage) msg).p != part)
-                            continue;
-                    }
+                    if (msg instanceof Message) {
+                        String thread = ((Message) msg).thread;
 
-                    w.println(msg.toString());
+                        if (thread.equals(thread0))
+                            w.println(msg.toString());
+                    }
                 }
 
                 w.close();
@@ -1625,65 +1580,122 @@ class TestDebugLog {
                 e.printStackTrace();
             }
         }
-        else {
-            for (Object msg : msgs0)
-                System.out.println(msg);
-        }
 
-        return msgs0;
-    }
-
-    public static void printKeyMessages(boolean file, Object key) {
-        List<Object> msgs0;
-
-        synchronized (msgs) {
-            msgs0 = new ArrayList<>(msgs);
-
-            msgs.clear();
-        }
-
-        if (file) {
+        public static void printMessages0(List<Object> msgs0, String file) {
             try {
-                FileOutputStream out = new FileOutputStream("test_debug.log");
+                FileOutputStream out = new FileOutputStream(file);
 
                 PrintWriter w = new PrintWriter(out);
 
+                for (Object msg : msgs0) {
+                    if (msg instanceof Message) {
+                        String msg0 = ((Message) msg).msg;
+
+                        if (msg0.equals("tx done") || msg0.equals("update") || msg0.equals("cleanup"))
+                            w.println(msg.toString());
+                    }
+                }
+
+                w.close();
+
+                out.close();
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        public static List<Object> printMessages(boolean file, Integer part) {
+            List<Object> msgs0;
+
+            synchronized (msgs) {
+                msgs0 = new ArrayList<>(msgs);
+
+                msgs.clear();
+            }
+
+            if (file) {
+                try {
+                    FileOutputStream out = new FileOutputStream("test_debug.log");
+
+                    PrintWriter w = new PrintWriter(out);
+
+                    for (Object msg : msgs0) {
+                        if (part != null && msg instanceof PartMessage) {
+                            if (((PartMessage) msg).p != part)
+                                continue;
+                        }
+
+                        w.println(msg.toString());
+                    }
+
+                    w.close();
+
+                    out.close();
+                }
+                catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            else {
+                for (Object msg : msgs0)
+                    System.out.println(msg);
+            }
+
+            return msgs0;
+        }
+
+        public static void printKeyMessages(boolean file, Object key) {
+            List<Object> msgs0;
+
+            synchronized (msgs) {
+                msgs0 = new ArrayList<>(msgs);
+
+                msgs.clear();
+            }
+
+            if (file) {
+                try {
+                    FileOutputStream out = new FileOutputStream("test_debug.log");
+
+                    PrintWriter w = new PrintWriter(out);
+
+                    for (Object msg : msgs0) {
+                        if (msg instanceof EntryMessage && !((EntryMessage)msg).key.equals(key))
+                            continue;
+
+                        w.println(msg.toString());
+                    }
+
+                    w.close();
+
+                    out.close();
+                }
+                catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            else {
                 for (Object msg : msgs0) {
                     if (msg instanceof EntryMessage && !((EntryMessage)msg).key.equals(key))
                         continue;
 
-                    w.println(msg.toString());
+                    System.out.println(msg);
                 }
-
-                w.close();
-
-                out.close();
-            }
-            catch (IOException e) {
-                e.printStackTrace();
             }
         }
-        else {
-            for (Object msg : msgs0) {
-                if (msg instanceof EntryMessage && !((EntryMessage)msg).key.equals(key))
-                    continue;
 
-                System.out.println(msg);
+        public static void clear() {
+            msgs.clear();
+        }
+
+        public static void clearEntries() {
+            for (Iterator it = msgs.iterator(); it.hasNext();) {
+                Object msg = it.next();
+
+                if (msg instanceof EntryMessage)
+                    it.remove();
             }
         }
-    }
 
-    public static void clear() {
-        msgs.clear();
-    }
-
-    public static void clearEntries() {
-        for (Iterator it = msgs.iterator(); it.hasNext();) {
-            Object msg = it.next();
-
-            if (msg instanceof EntryMessage)
-                it.remove();
-        }
-    }
-
-}
+    }}
