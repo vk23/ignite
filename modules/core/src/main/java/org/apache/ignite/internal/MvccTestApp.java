@@ -59,7 +59,7 @@ public class MvccTestApp {
     private static final boolean DEBUG_LOG = false;
 
     /** */
-    private static final boolean SQL = true;
+    private static final boolean SQL = false;
 
     public static void main1(String[] args) throws Exception {
         final MvccTestApp.TestCluster cluster = new MvccTestApp.TestCluster(1);
@@ -157,13 +157,13 @@ public class MvccTestApp {
     public static void main(String[] args) throws Exception {
         final AtomicBoolean err = new AtomicBoolean();
 
-        final int READ_THREADS = 3;
+        final int READ_THREADS = 4;
         final int UPDATE_THREADS = 4;
-        final int ACCOUNTS = 100;
+        final int ACCOUNTS = 50;
 
         final int START_VAL = 100000;
 
-        for (int iter = 0; iter < 5; iter++) {
+        for (int iter = 0; iter < 10; iter++) {
             System.out.println("Iteration [readThreads=" + READ_THREADS +
                 ", updateThreads=" + UPDATE_THREADS + ", accounts=" + ACCOUNTS + ", iter=" + iter + ']');
 
@@ -201,7 +201,7 @@ public class MvccTestApp {
 
             cleanupThread.start();
 
-            final boolean REMOVES = true;
+            final boolean REMOVES = false;
 
             for (int i = 0; i < READ_THREADS; i++) {
                 final int id = i;
@@ -331,7 +331,7 @@ public class MvccTestApp {
                 thread.start();
             }
 
-            long endTime = System.currentTimeMillis() + 60_000;
+            long endTime = System.currentTimeMillis() + 2_000;
 
             while (!stop.get()) {
                 Thread.sleep(1000);
@@ -339,7 +339,7 @@ public class MvccTestApp {
                 if (System.currentTimeMillis() >= endTime)
                     break;
 
-                cluster.dumpMvccInfo();
+                //cluster.dumpMvccInfo();
             }
 
             stop.set(true);
